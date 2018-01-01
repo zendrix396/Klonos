@@ -11,6 +11,8 @@ export default function Home() {
     draggedPiece,
     draggedFrom,
     hoveredSquare,
+    validMoves,
+    lastMove,
     setMouseDown,
     setDraggedPiece,
     setDraggedFrom,
@@ -25,6 +27,8 @@ export default function Home() {
         hoveredSquare={hoveredSquare}
         dragging={dragging}
         draggedFrom={draggedFrom}
+        validMoves={validMoves}
+        lastMove={lastMove}
         setMouseDown={setMouseDown}
         setDraggedPiece={setDraggedPiece}
         setDraggedFrom={setDraggedFrom}

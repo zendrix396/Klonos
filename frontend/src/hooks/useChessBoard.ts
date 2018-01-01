@@ -6,15 +6,19 @@ import {
   SQUARE_SIZE,
   DIMENSIONS,
 } from "@/utils/constants";
+import { getLegalMoves } from "@/hooks/getLegalMoves";
 
 export function useChessBoard() {
   const [board, setBoard] = useState(() => getInitialBoard());
+  const [whiteTurn, setWhiteTurn] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [mouseDown, setMouseDown] = useState(false);
   const [draggedPiece, setDraggedPiece] = useState<string | null>(null);
   const [draggedFrom, setDraggedFrom] = useState<{ row: number; col: number } | null>(null);
   const [hoveredSquare, setHoveredSquare] = useState<{ row: number; col: number } | null>(null);
+  const [validMoves, setValidMoves] = useState<{ row: number; col: number }[]>([]); // ✅ NEW
+  const [lastMove, setLastMove] = useState<{ from: { row: number; col: number }, to: { row: number; col: number }, piece: string } | null>(null);
 
   const draggedFromRef = useRef<{ row: number; col: number } | null>(null);
   const hoveredSquareRef = useRef<{ row: number; col: number } | null>(null);
@@ -30,13 +34,68 @@ export function useChessBoard() {
         const piece = board[row][col];
         if (piece !== "") {
           const from = { row, col };
-          setDraggedFrom(from);
-          draggedFromRef.current = from;
-          setDraggedPiece(piece);
-          setDragging(true);
-          setMouseDown(true);
-          setPosition({ x, y });
-          document.body.style.cursor = "grabbing";
+          const isWhite = piece.includes("white");
+          if ((whiteTurn && isWhite) || (!whiteTurn && !isWhite)) {
+            setDraggedFrom(from);
+            draggedFromRef.current = from;
+            setDraggedPiece(piece);
+            setDragging(true);
+            setMouseDown(true);
+            setPosition({ x, y });
+            document.body.style.cursor = "grabbing";
+
+            // ✅ Compute legal move destinations (both move + capture)
+            const initialPiece = getInitialBoard()[row][col];
+            const hasMoved = piece !== initialPiece;
+
+            const legalMovesInput = { piece, hasMoved, capture: true, position: from, lastMove: lastMove || undefined };
+            const captureMoves = getLegalMoves(legalMovesInput) || { row: [], col: [] };
+            const normalMoves = getLegalMoves({ ...legalMovesInput, capture: false }) || { row: [], col: [] };
+            const moves: { row: number; col: number }[] = [];
+            if (captureMoves.enPassantTarget) {
+              moves.push(captureMoves.enPassantTarget);
+            }
+
+            for (const r of normalMoves.row) {
+              for (const c of normalMoves.col) {
+                const targetRow = row + r;
+                const targetCol = col + c;
+                if (
+                  targetRow >= 0 &&
+                  targetRow < DIMENSIONS &&
+                  targetCol >= 0 &&
+                  targetCol < DIMENSIONS &&
+                  board[targetRow][targetCol] === ""
+                ) {
+                  moves.push({ row: targetRow, col: targetCol });
+                }
+              }
+            }
+
+            for (const r of captureMoves.row) {
+              for (const c of captureMoves.col) {
+                const targetRow = row + r;
+                const targetCol = col + c;
+                if (
+                  targetRow >= 0 &&
+                  targetRow < DIMENSIONS &&
+                  targetCol >= 0 &&
+                  targetCol < DIMENSIONS
+                ) {
+                  const target = board[targetRow][targetCol];
+                  const isEnemy =
+                    target !== "" &&
+                    ((isWhite && target.includes("black")) ||
+                      (!isWhite && target.includes("white")));
+                  if (isEnemy) {
+                    moves.push({ row: targetRow, col: targetCol });
+                  }
+                }
+              }
+            }
+
+            setValidMoves(moves); // ✅ Set valid moves here
+          }
         }
       }
     };
@@ -74,12 +133,28 @@ export function useChessBoard() {
         to &&
         (from.row !== to.row || from.col !== to.col)
       ) {
-        setBoard((prev) => {
-          const newBoard = prev.map((row) => row.slice());
-          newBoard[to.row][to.col] = prev[from.row][from.col];
-          newBoard[from.row][from.col] = "";
-          return newBoard;
-        });
+        const isValid = validMoves.some(
+          (move) => move.row === to.row && move.col === to.col
+        );
+
+        if (isValid) {
+          const isEnPassant = draggedPiece?.includes("pawn") &&
+            to.col !== from.col &&
+            !board[to.row][to.col];
+
+          setBoard((prev) => {
+            const newBoard = prev.map((row) => row.slice());
+            newBoard[to.row][to.col] = prev[from.row][from.col];
+            newBoard[from.row][from.col] = "";
+            if (isEnPassant) {
+              const capturedPawnRow = whiteTurn ? to.row + 1 : to.row -1;
+              newBoard[capturedPawnRow][to.col] = "";
+            }
+            return newBoard;
+          });
+          setLastMove({ from, to, piece: board[from.row][from.col] });
+          setWhiteTurn((prev) => !prev);
+        }
       }
 
       // Reset everything
@@ -87,6 +162,7 @@ export function useChessBoard() {
       setDraggedPiece(null);
       setDraggedFrom(null);
       setHoveredSquare(null);
+      setValidMoves([]); // ✅ Clear valid moves
       draggedFromRef.current = null;
       hoveredSquareRef.current = null;
     };
@@ -100,7 +176,7 @@ export function useChessBoard() {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [board, dragging]);
+  }, [board, dragging, whiteTurn]);
 
   return {
     board,
@@ -112,6 +188,7 @@ export function useChessBoard() {
     setMouseDown,
     setDraggedPiece,
     setDraggedFrom,
+    validMoves, // ✅ expose valid moves to use in <Board />
+    lastMove,
   };
 }
-  
