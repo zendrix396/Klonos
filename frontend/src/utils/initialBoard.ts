@@ -1,4 +1,6 @@
-// utils/initialBoard.ts
+import {Chess} from 'chess.js'
+
+
 export function getInitialBoard() {
   return Array.from({ length: 8 }, (_, row) =>
     Array.from({ length: 8 }, (_, col) => {

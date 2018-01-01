@@ -1,5 +1,6 @@
 // components/Board.tsx
 import Square from "./Square";
+import { getLegalMoves } from "@/hooks/getLegalMoves";
 
 type BoardProps = {
   board: string[][];
@@ -20,30 +21,35 @@ export default function Board({
   setDraggedPiece,
   setDraggedFrom,
 }: BoardProps) {
+  const draggedPiece = draggedFrom && board[draggedFrom.row]?.[draggedFrom.col]||null;
+  const legalMove = draggedPiece ? getLegalMoves({piece:draggedPiece}) : null;
 
   return ( 
     <div className="relative top-8 left-8 overflow-x-hidden">
       {board.map((rowArr, row) => (
         <div key={row} className="flex flex-row">
-          {rowArr.map((piece, col) => (
-            <Square
-              key={`${row}-${col}`}
-              row={row}
-              col={col}
-              piece={piece}
-              hovered={hoveredSquare?.row === row && hoveredSquare?.col === col}
-              dragging={dragging}
-              draggedFrom={draggedFrom}
-              dotExists={( row>= draggedFrom?.row-2 && row<=draggedFrom?.row-1  && col===draggedFrom?.col && dragging)?true:false}
-              onMouseDown={() => {
-                if (piece !== "") {
-                  setMouseDown(true);
-                  setDraggedPiece(piece);
-                  setDraggedFrom({ row, col });
-                }
-              }}
-            />
-          ))}
+          {rowArr.map((piece, col) => {
+            const dotExists = legalMove && draggedFrom && row === draggedFrom.row + legalMove.row && col === draggedFrom.col + legalMove.col;
+            return (
+              <Square
+                key={`${row}-${col}`}
+                row={row}
+                col={col}
+                piece={piece}
+                hovered={hoveredSquare?.row === row && hoveredSquare?.col === col}
+                dragging={dragging}
+                draggedFrom={draggedFrom}
+                dotExists={dotExists||false}
+                onMouseDown={() => {
+                  if (piece !== "") {
+                    setMouseDown(true);
+                    setDraggedPiece(piece);
+                    setDraggedFrom({ row, col });
+                  }
+                }}
+              />
+            );
+          })}
         </div>
       ))}
     </div>
