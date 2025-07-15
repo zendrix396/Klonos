@@ -1,31 +1,91 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import "./globals.css";
+
 
 export default function Home() {
   const dimensions = 8;
-  const board = [];
-  const [dragging, isDragging] = useState(false);
+  const Board = [];
+  const [dragging, setDragging] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [mousedown, setMouseDown] = useState(false);
+  const [mouseDown, setMouseDown] = useState(false);
   const [draggedPiece, setDraggedPiece] = useState<string | null>(null);
+  const hoveredSquareRef = useRef<{row:number, col:number}| null>(null);
+  const [validMoves, setValidMoves] = useState<{ row: number, col: number }[]>([]);
+
   const [draggedFrom, setDraggedFrom] = useState<{
     row: number;
     col: number;
   } | null>(null);
+  const [hoveredSquare, setHoveredSquare] = useState<{
+    row: number;
+    col: number;
+  } | null>(null);
+  const initialBoard = Array.from({ length: 8 }, (_, row) =>
+    Array.from({ length: 8 }, (_, col) => {
+      if ((row === 0 && col === 0) || (row === 0 && col === 7))
+        return "pieces/black_rook.png";
+      if ((row === 7 && col === 0) || (row === 7 && col === 7))
+        return "pieces/white_rook.png";
+      if ((row === 0 && col === 1) || (row === 0 && col === 6))
+        return "pieces/black_knight.png";
+      if ((row === 7 && col === 1) || (row === 7 && col === 6))
+        return "pieces/white_knight.png";
+      if ((row === 0 && col === 2) || (row === 0 && col === 5))
+        return "pieces/black_bishop.png";
+      if ((row === 7 && col === 2) || (row === 7 && col === 5))
+        return "pieces/white_bishop.png";
+      if (row === 0 && col === 3) return "pieces/black_queen.png";
+      if (row === 7 && col === 3) return "pieces/white_queen.png";
+      if (row === 0 && col === 4) return "pieces/black_king.png";
+      if (row === 7 && col === 4) return "pieces/white_king.png";
+      if (row === 1) return "pieces/black_pawn.png";
+      if (row === 6) return "pieces/white_pawn.png";
+      return "";
+    })
+  );
 
+  const [board, setBoard] = useState(initialBoard);
   useEffect(() => {
-    const handleMouseDown = () => setMouseDown(true);
+    const handleMouseDown = () => {
+      setMouseDown(true);
+    };
     const handleMouseUp = () => {
       setMouseDown(false);
-      isDragging(false);
-      setDraggedPiece(null);
+      setDragging(false);
+      const square=hoveredSquareRef.current;
+      if (draggedFrom&&square&&(draggedFrom.row!==square.row||draggedFrom.col!=square.col)){
+        setBoard((prev)=>{
+          const newBoard = prev.map((row)=>row.slice())
+          newBoard[square.row][square.col]= prev[draggedFrom.row][draggedFrom.col];
+          newBoard[draggedFrom.row][draggedFrom.col] = ""
+          return newBoard;
+        })
+      }
       setDraggedFrom(null);
+      setDraggedPiece(null);
     };
+    const boardOffsetX = 32; // 8*4
+    const boardOffsetY = 32; // board top offset (top-8 = 2 rem or 2*16=32 px)
+    const squareSize = 80; // w-20=80px
     const handleMouseMove = (e: MouseEvent) => {
-      if (mousedown) {
-        isDragging(true);
-        setPosition({ x: e.clientX, y: e.clientY });
+      if (mouseDown) {
+        const x = e.clientX;
+        const y = e.clientY;
+        setPosition({ x, y });
+        setDragging(true);
+        const col = Math.floor((x - boardOffsetX) / squareSize);
+        const row = Math.floor((y - boardOffsetY) / squareSize);
+        if (row >= 0 && row < dimensions && col >= 0 && col < dimensions) {
+          setHoveredSquare({ row, col });
+          hoveredSquareRef.current = {row, col};
+        } else {
+          setHoveredSquare(null);
+          hoveredSquareRef.current = null;
+        }
+        // if (!dragging){
+        //   setHoveredSquare(null);
+        // }
       }
     };
     document.addEventListener("mousedown", handleMouseDown);
@@ -36,92 +96,64 @@ export default function Home() {
       document.removeEventListener("mouseup", handleMouseUp);
       document.removeEventListener("mousemove", handleMouseMove);
     };
-  }, [mousedown]);
-
+  }, [mouseDown]);
 
   for (let row = 0; row < dimensions; row++) {
-    const row_boxes = [];
+    const rows = [];
     for (let col = 0; col < dimensions; col++) {
-      const isBlack = (row + col) % 2 === 0;
-      const squareColor = isBlack ? "bg-blue-600" : "bg-blue-100";
-      let piece = "";
-      if (
-        (row == 0 && col == 0) ||
-        (row == 0 && col == 7) ||
-        (row == 7 && col == 0) ||
-        (row == 7 && col == 7)
-      ) {
-        piece = row == 0 ? "pieces/black_rook.png" : "pieces/white_rook.png";
-      }
-      if (
-        (row == 0 && col == 1) ||
-        (row == 0 && col == 6) ||
-        (row == 7 && col == 1) ||
-        (row == 7 && col == 6)
-      ) {
-        piece =
-          row == 0 ? "pieces/black_knight.png" : "pieces/white_knight.png";
-      }
-      if (
-        (row == 0 && col == 2) ||
-        (row == 0 && col == 5) ||
-        (row == 7 && col == 2) ||
-        (row == 7 && col == 5)
-      ) {
-        piece =
-          row == 0 ? "pieces/black_bishop.png" : "pieces/white_bishop.png";
-      }
-      if ((row == 0 && col == 3) || (row == 7 && col == 3)) {
-        piece = row == 0 ? "pieces/black_queen.png" : "pieces/white_queen.png";
-      }
-      if ((row == 0 && col == 4) || (row == 7 && col == 4)) {
-        piece = row == 0 ? "pieces/black_king.png" : "pieces/white_king.png";
-      }
-      if (row == 1 || row == 6) {
-        piece = row == 1 ? "pieces/black_pawn.png" : "pieces/white_pawn.png";
-      }
+      const isBlack = (row + col) % 2 == 0;
+      const color = isBlack ? "bg-blue-700" : "bg-blue-100";
+      const piece = board[row][col];
 
-      row_boxes.push(
-        <div key={`${row}-${col}`} className={`w-20 h-20 ${squareColor} p-1`}>
-          {piece != "" &&
-            !(dragging && draggedFrom?.row === row && draggedFrom?.col === col) && (
+      rows.push(
+        <div
+          key={`${row}-${col}`}
+          className={`w-20 h-20 ${color} relative ${
+            hoveredSquare?.row === row && hoveredSquare?.col === col
+              ? "border-4 border-yellow-400"
+              : ""
+          }`}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            if (piece !== "") {
+              setMouseDown(true);
+              setDraggedPiece(piece);
+              setDraggedFrom({ row, col });
+            }
+          }}
+          onDragStart={(e) => e.preventDefault()}
+        >
+          {(!dragging ||
+            draggedFrom?.row !== row ||
+            draggedFrom?.col !== col) &&
+            piece !== "" && (
               <div
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setMouseDown(true);
-                  setDraggedPiece(piece);
-                  setDraggedFrom({ row, col });
-                }}
-                onDragStart={(e)=>e.preventDefault()}
-                className="w-full h-full bg-contain bg-no-repeat bg-center cursor-grab active:cursor-grabbing"
+                className="absolute inset-0 bg-contain bg-no-repeat bg-center cursor-grab active:cursor-grabbing"
                 style={{ backgroundImage: `url(${piece})` }}
               ></div>
             )}
         </div>
       );
     }
-    board.push(
-      <div key={row} className="flex">
-        {row_boxes}
+    Board.push(
+      <div key={`${row}`} className="flex flex-row">
+        {rows}
       </div>
     );
   }
-
   return (
     <>
-      <div className="inline-block border-1 border-blue-200 relative left-8 top-8">
-        {board}
-        {dragging && draggedPiece && (
-          <div
-            className="w-20 h-20 pointer-events-none fixed z-50 bg-contain bg-no-repeat bg-center"
-            style={{
-              backgroundImage: `url(${draggedPiece})`,
-              left: position.x - 40,
-              top: position.y - 40,
-            }}
-          ></div>
-        )}
-      </div>
+      <div className="relative top-8 left-8 overflow-x-hidden">{Board}</div>
+      {dragging && draggedPiece && (
+        <div
+          className="w-20 h-20 pointer-events-none fixed z-50 bg-contain bg-no-repeat bg-center"
+          style={{
+            backgroundImage: `url(${draggedPiece})`,
+            left: position.x - 40,
+            top: position.y - 40,
+          }}
+        ></div>
+      )}
     </>
   );
 }

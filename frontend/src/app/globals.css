@@ -42,7 +42,7 @@
 }
 :root {
   --radius: 0.65rem;
-  --background: oklch(100% 0.00011 271.152);
+  --background: oklch(22.925% 0.05686 260.239);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.141 0.005 285.823);
@@ -150,4 +150,8 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+body {
+  overflow-x: hidden;
 }
