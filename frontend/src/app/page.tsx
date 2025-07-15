@@ -1,4 +1,5 @@
 import Board from "@/components/chess/Board";
+import "./globals.css";
 
 export default function Home() {
   return (

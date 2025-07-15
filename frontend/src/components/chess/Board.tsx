@@ -1,150 +1,153 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
-import Square from './Square';
-import { Position, GameState } from './types';
+import { useEffect, useState, useRef, useCallback } from "react";
+import { Position, GameState, Piece } from './types';
 import { createInitialGameState, getLegalMoves, makeMove } from './game-logic';
 
 export default function Board() {
+  const dimensions = 8;
   const [gameState, setGameState] = useState<GameState>(createInitialGameState());
-  const [selectedSquare, setSelectedSquare] = useState<Position | null>(null);
-  const [legalMoves, setLegalMoves] = useState<Position[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [draggedPiece, setDraggedPiece] = useState<Piece | null>(null);
   const [draggedFrom, setDraggedFrom] = useState<Position | null>(null);
+  const [legalMoves, setLegalMoves] = useState<Position[]>([]);
+  
+  // State for visual dragging effect
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [hoveredSquare, setHoveredSquare] = useState<Position | null>(null);
-  const hoveredSquareRef = useRef<Position | null>(null);
 
-  useEffect(() => {
-    const handleMouseUp = () => {
-      if (dragging && draggedFrom && hoveredSquareRef.current) {
-        const to = hoveredSquareRef.current;
-        
-        // Check if the move is legal
-        const piece = gameState.board[draggedFrom.row][draggedFrom.col];
-        if (piece && piece.color === gameState.currentPlayer) {
-          const moves = getLegalMoves(gameState, draggedFrom);
-          const isLegalMove = moves.some(move => move.row === to.row && move.col === to.col);
-          
-          if (isLegalMove) {
-            const newGameState = makeMove(gameState, draggedFrom, to);
-            setGameState(newGameState);
-          }
-        }
-      }
-      
-      setDragging(false);
-      setDraggedFrom(null);
-      setSelectedSquare(null);
-      setLegalMoves([]);
-    };
+  const boardRef = useRef<HTMLDivElement>(null);
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (dragging) {
-        setMousePosition({ x: e.clientX, y: e.clientY });
-        
-        // Calculate which square the mouse is over
-        const boardRect = document.querySelector('.chess-board')?.getBoundingClientRect();
-        if (boardRect) {
-          const col = Math.floor((e.clientX - boardRect.left) / 80);
-          const row = Math.floor((e.clientY - boardRect.top) / 80);
-          
-          if (row >= 0 && row < 8 && col >= 0 && col < 8) {
-            setHoveredSquare({ row, col });
-            hoveredSquareRef.current = { row, col };
-          } else {
-            setHoveredSquare(null);
-            hoveredSquareRef.current = null;
-          }
-        }
-      }
-    };
-
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('mousemove', handleMouseMove);
-
-    return () => {
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('mousemove', handleMouseMove);
-    };
-  }, [dragging, draggedFrom, gameState]);
-
-  const handleSquareMouseDown = (position: Position, e: React.MouseEvent) => {
-    e.preventDefault();
-    const piece = gameState.board[position.row][position.col];
-    
+  const handlePieceDrop = useCallback((from: Position, to: Position) => {
+    const piece = gameState.board[from.row][from.col];
     if (piece && piece.color === gameState.currentPlayer) {
-      setSelectedSquare(position);
-      setDraggedFrom(position);
-      setDragging(true);
-      
-      // Calculate legal moves
-      const moves = getLegalMoves(gameState, position);
-      setLegalMoves(moves);
-    } else if (selectedSquare) {
-      // Try to move to this square
-      const moves = getLegalMoves(gameState, selectedSquare);
-      const isLegalMove = moves.some(move => move.row === position.row && move.col === position.col);
-      
-      if (isLegalMove) {
-        const newGameState = makeMove(gameState, selectedSquare, position);
+      const isLegal = legalMoves.some(move => move.row === to.row && move.col === to.col);
+      if (isLegal) {
+        const newGameState = makeMove(gameState, from, to);
         setGameState(newGameState);
       }
+    }
+    
+    // Reset dragging state
+    setDragging(false);
+    setDraggedPiece(null);
+    setDraggedFrom(null);
+    setLegalMoves([]);
+    setHoveredSquare(null);
+  }, [gameState, legalMoves]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragging || !boardRef.current) return;
       
-      setSelectedSquare(null);
-      setLegalMoves([]);
+      setMousePosition({ x: e.clientX, y: e.clientY });
+      
+      const boardRect = boardRef.current.getBoundingClientRect();
+      const col = Math.floor((e.clientX - boardRect.left) / 80);
+      const row = Math.floor((e.clientY - boardRect.top) / 80);
+
+      if (row >= 0 && row < dimensions && col >= 0 && col < dimensions) {
+        setHoveredSquare({ row, col });
+      } else {
+        setHoveredSquare(null);
+      }
+    };
+    
+    const handleMouseUp = () => {
+      if (dragging && draggedFrom && hoveredSquare) {
+        handlePieceDrop(draggedFrom, hoveredSquare);
+      } else if (dragging) {
+        // If dropped outside the board, just reset
+        setDragging(false);
+        setDraggedPiece(null);
+        setDraggedFrom(null);
+        setLegalMoves([]);
+        setHoveredSquare(null);
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [dragging, draggedFrom, hoveredSquare, handlePieceDrop]);
+
+  const handleSquareMouseDown = (pos: Position) => {
+    const piece = gameState.board[pos.row][pos.col];
+    if (piece && piece.color === gameState.currentPlayer) {
+      setDragging(true);
+      setDraggedPiece(piece);
+      setDraggedFrom(pos);
+      setLegalMoves(getLegalMoves(gameState, pos));
     }
   };
 
-  const draggedPiece = draggedFrom && gameState.board[draggedFrom.row][draggedFrom.col];
+  const boardSquares = [];
+  for (let row = 0; row < dimensions; row++) {
+    const rows = [];
+    for (let col = 0; col < dimensions; col++) {
+      const isBlack = (row + col) % 2 === 0;
+      const color = isBlack ? "bg-blue-700" : "bg-blue-100";
+      const piece = gameState.board[row][col];
+      const isLegalMove = legalMoves.some(move => move.row === row && move.col === col);
+      
+      // The piece should be invisible on its original square while being dragged
+      const isPieceHidden = dragging && draggedFrom?.row === row && draggedFrom?.col === col;
+
+      rows.push(
+        <div
+          key={`${row}-${col}`}
+          className={`w-20 h-20 ${color} relative ${
+            hoveredSquare?.row === row && hoveredSquare?.col === col
+              ? "border-4 border-yellow-400"
+              : ""
+          }`}
+          onMouseDown={() => handleSquareMouseDown({ row, col })}
+        >
+          {/* Legal move indicator */}
+          {isLegalMove && !isPieceHidden && (
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+              {piece ? (
+                <div className="w-16 h-16 border-4 border-black/50 rounded-full"></div>
+              ) : (
+                <div className="w-4 h-4 bg-black/50 rounded-full"></div>
+              )}
+            </div>
+          )}
+          
+          {/* Piece */}
+          {piece && !isPieceHidden && (
+            <div
+              className="absolute inset-0 bg-contain bg-no-repeat bg-center cursor-grab active:cursor-grabbing"
+              style={{ backgroundImage: `url(/${piece.image})` }}
+            ></div>
+          )}
+        </div>
+      );
+    }
+    boardSquares.push(<div key={row} className="flex flex-row">{rows}</div>);
+  }
 
   return (
     <div className="flex flex-col items-center gap-4">
-      {/* Current player indicator */}
       <div className="text-2xl font-bold">
         Current Player: {gameState.currentPlayer === 'white' ? 'White' : 'Black'}
         {gameState.isCheck && <span className="text-red-500 ml-2">CHECK!</span>}
       </div>
       
-      {/* Chess board */}
-      <div className="chess-board relative">
-        {Array.from({ length: 8 }, (_, row) => (
-          <div key={row} className="flex">
-            {Array.from({ length: 8 }, (_, col) => {
-              const piece = gameState.board[row][col];
-              const isBlack = (row + col) % 2 === 0;
-              const isSelected = selectedSquare?.row === row && selectedSquare?.col === col;
-              const isLegalMove = legalMoves.some(move => move.row === row && move.col === col);
-              const isHovered = hoveredSquare?.row === row && hoveredSquare?.col === col;
-              const isDragging = dragging && draggedFrom?.row === row && draggedFrom?.col === col;
-              
-              return (
-                <Square
-                  key={`${row}-${col}`}
-                  position={{ row, col }}
-                  piece={piece}
-                  isBlack={isBlack}
-                  isSelected={isSelected}
-                  isLegalMove={isLegalMove}
-                  isHovered={isHovered}
-                  isDragging={isDragging}
-                  onMouseDown={(e) => handleSquareMouseDown({ row, col }, e)}
-                />
-              );
-            })}
-          </div>
-        ))}
-      </div>
+      <div ref={boardRef} className="relative overflow-hidden">{boardSquares}</div>
       
-      {/* Dragged piece */}
       {dragging && draggedPiece && (
         <div
           className="w-20 h-20 pointer-events-none fixed z-50 bg-contain bg-no-repeat bg-center"
           style={{
-            backgroundImage: `url(${draggedPiece.image})`,
+            backgroundImage: `url(/${draggedPiece.image})`,
             left: mousePosition.x - 40,
             top: mousePosition.y - 40,
           }}
-        />
+        ></div>
       )}
     </div>
   );
