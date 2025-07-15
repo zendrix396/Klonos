@@ -1,151 +1,163 @@
 "use client";
-import { useEffect, useState, useRef, useCallback } from "react";
-import { Position, GameState, Piece } from './types';
+import { useEffect, useState, useRef } from "react";
+import { GameState, Piece, Position } from './types';
 import { createInitialGameState, getLegalMoves, makeMove } from './game-logic';
 
-export default function Board() {
+interface BoardProps {
+  onMove?: (from: Position, to: Position) => void;
+  externalGameState?: GameState | null;
+  playerColor?: 'white' | 'black';
+  isMyTurn?: boolean;
+}
+
+export default function Board({ onMove, externalGameState, playerColor = 'white', isMyTurn = true }: BoardProps) {
   const dimensions = 8;
-  const [gameState, setGameState] = useState<GameState>(createInitialGameState());
+  const [gameState, setGameState] = useState<GameState>(
+    externalGameState || createInitialGameState()
+  );
+  
+  useEffect(() => {
+    if (externalGameState) {
+      setGameState(externalGameState);
+    }
+  }, [externalGameState]);
+
   const [dragging, setDragging] = useState(false);
   const [draggedPiece, setDraggedPiece] = useState<Piece | null>(null);
   const [draggedFrom, setDraggedFrom] = useState<Position | null>(null);
-  const [legalMoves, setLegalMoves] = useState<Position[]>([]);
-  
-  // State for visual dragging effect
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const [hoveredSquare, setHoveredSquare] = useState<Position | null>(null);
-
+  const [legalMoves, setLegalMoves] = useState<Position[]>([]);
+  const [squareSize, setSquareSize] = useState(80); // Default for SSR / initial render
   const boardRef = useRef<HTMLDivElement>(null);
 
-  const handlePieceDrop = useCallback((from: Position, to: Position) => {
-    const piece = gameState.board[from.row][from.col];
+  // Dynamically calculate square size for responsive drag calculations
+  useEffect(() => {
+    const updateSquareSize = () => {
+        if (boardRef.current) {
+            setSquareSize(boardRef.current.offsetWidth / 8);
+        }
+    };
+    updateSquareSize();
+    window.addEventListener('resize', updateSquareSize);
+    return () => window.removeEventListener('resize', updateSquareSize);
+  }, []);
+
+  const handleMouseDown = (e: React.MouseEvent, pos: Position) => {
+    e.preventDefault();
+    if (!isMyTurn) return; // Can't move if it's not your turn
+
+    const piece = gameState.board[pos.row][pos.col];
     if (piece && piece.color === gameState.currentPlayer) {
-      const isLegal = legalMoves.some(move => move.row === to.row && move.col === to.col);
-      if (isLegal) {
-        const newGameState = makeMove(gameState, from, to);
-        setGameState(newGameState);
-      }
+      setDraggedPiece(piece);
+      setDraggedFrom(pos);
+      setLegalMoves(getLegalMoves(gameState, pos));
+      setDragging(true);
+      setMousePosition({ x: e.clientX, y: e.clientY });
     }
-    
-    // Reset dragging state
-    setDragging(false);
-    setDraggedPiece(null);
-    setDraggedFrom(null);
-    setLegalMoves([]);
-    setHoveredSquare(null);
-  }, [gameState, legalMoves]);
+  };
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!dragging || !boardRef.current) return;
-      
-      setMousePosition({ x: e.clientX, y: e.clientY });
-      
-      const boardRect = boardRef.current.getBoundingClientRect();
-      const col = Math.floor((e.clientX - boardRect.left) / 80);
-      const row = Math.floor((e.clientY - boardRect.top) / 80);
-
-      if (row >= 0 && row < dimensions && col >= 0 && col < dimensions) {
-        setHoveredSquare({ row, col });
-      } else {
-        setHoveredSquare(null);
-      }
+      if (dragging) setMousePosition({ x: e.clientX, y: e.clientY });
     };
-    
-    const handleMouseUp = () => {
-      if (dragging && draggedFrom && hoveredSquare) {
-        handlePieceDrop(draggedFrom, hoveredSquare);
-      } else if (dragging) {
-        // If dropped outside the board, just reset
-        setDragging(false);
-        setDraggedPiece(null);
-        setDraggedFrom(null);
-        setLegalMoves([]);
-        setHoveredSquare(null);
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (dragging && draggedFrom && boardRef.current) {
+        const boardRect = boardRef.current.getBoundingClientRect();
+        // Use dynamic squareSize for calculations
+        const col = Math.floor((e.clientX - boardRect.left) / squareSize);
+        const row = Math.floor((e.clientY - boardRect.top) / squareSize);
+
+        if (row >= 0 && row < 8 && col >= 0 && col < 8) {
+          const to = { row, col };
+          if (playerColor === 'black') { // Adjust coordinates if board is flipped
+              to.row = 7 - to.row;
+              to.col = 7 - to.col;
+          }
+          const isLegal = legalMoves.some(move => move.row === to.row && move.col === to.col);
+          if (isLegal) {
+            if (onMove) onMove(draggedFrom, to);
+            else setGameState(makeMove(gameState, draggedFrom, to));
+          }
+        }
       }
+      setDragging(false);
+      setDraggedPiece(null);
+      setDraggedFrom(null);
+      setLegalMoves([]);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-    
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [dragging, draggedFrom, hoveredSquare, handlePieceDrop]);
+  }, [dragging, draggedFrom, gameState, legalMoves, onMove, playerColor, squareSize]);
+  
+  const boardRows = [];
+  const orientation = playerColor === 'white' ? 'white' : 'black';
 
-  const handleSquareMouseDown = (pos: Position) => {
-    const piece = gameState.board[pos.row][pos.col];
-    if (piece && piece.color === gameState.currentPlayer) {
-      setDragging(true);
-      setDraggedPiece(piece);
-      setDraggedFrom(pos);
-      setLegalMoves(getLegalMoves(gameState, pos));
-    }
-  };
+  for (let i = 0; i < 8; i++) {
+    const rowSquares = [];
+    for (let j = 0; j < 8; j++) {
+      const row = orientation === 'white' ? i : 7 - i;
+      const col = orientation === 'white' ? j : 7 - j;
 
-  const boardSquares = [];
-  for (let row = 0; row < dimensions; row++) {
-    const rows = [];
-    for (let col = 0; col < dimensions; col++) {
-      const isBlack = (row + col) % 2 === 0;
-      const color = isBlack ? "bg-blue-700" : "bg-blue-100";
       const piece = gameState.board[row][col];
       const isLegalMove = legalMoves.some(move => move.row === row && move.col === col);
-      
-      // The piece should be invisible on its original square while being dragged
       const isPieceHidden = dragging && draggedFrom?.row === row && draggedFrom?.col === col;
-
-      rows.push(
+      
+      rowSquares.push(
         <div
           key={`${row}-${col}`}
-          className={`w-20 h-20 ${color} relative ${
-            hoveredSquare?.row === row && hoveredSquare?.col === col
-              ? "border-4 border-yellow-400"
-              : ""
-          }`}
-          onMouseDown={() => handleSquareMouseDown({ row, col })}
+          // Responsive square sizes
+          className={`w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 ${(row + col) % 2 === 0 ? "bg-blue-700" : "bg-blue-100"} relative ${!isMyTurn ? 'cursor-not-allowed' : ''}`}
+          onMouseDown={(e) => handleMouseDown(e, { row, col })}
         >
-          {/* Legal move indicator */}
-          {isLegalMove && !isPieceHidden && (
+          {isLegalMove && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              {piece ? (
-                <div className="w-16 h-16 border-4 border-black/50 rounded-full"></div>
+              {piece && piece.color !== gameState.currentPlayer ? (
+                // Responsive capture indicator
+                <div className="w-3/4 h-3/4 border-2 md:border-4 border-black/50 rounded-full"></div>
               ) : (
-                <div className="w-4 h-4 bg-black/50 rounded-full"></div>
+                // Responsive move indicator
+                <div className="w-1/4 h-1/4 bg-black/50 rounded-full"></div>
               )}
             </div>
           )}
           
-          {/* Piece */}
           {piece && !isPieceHidden && (
             <div
-              className="absolute inset-0 bg-contain bg-no-repeat bg-center cursor-grab active:cursor-grabbing"
+              className={`absolute inset-0 bg-contain bg-no-repeat bg-center ${isMyTurn ? 'cursor-grab active:cursor-grabbing' : ''}`}
               style={{ backgroundImage: `url(/${piece.image})` }}
             ></div>
           )}
         </div>
       );
     }
-    boardSquares.push(<div key={row} className="flex flex-row">{rows}</div>);
+    boardRows.push(<div key={i} className="flex flex-row">{rowSquares}</div>);
   }
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <div className="text-2xl font-bold">
-        Current Player: {gameState.currentPlayer === 'white' ? 'White' : 'Black'}
+    <div className="flex flex-col items-center gap-2 md:gap-4">
+      <div className={`text-2xl font-bold font-montserrat ${isMyTurn ? 'text-green-600' : 'text-stone-900'}`}>
+        {isMyTurn ? 'Your Turn' : "Opponent's Turn"}
         {gameState.isCheck && <span className="text-red-500 ml-2">CHECK!</span>}
       </div>
       
-      <div ref={boardRef} className="relative overflow-hidden">{boardSquares}</div>
+      <div ref={boardRef} className={`relative border-2 md:border-4 ${isMyTurn ? 'border-green-600' : 'border-stone-800'} transition-colors`}>
+        {boardRows}
+      </div>
       
       {dragging && draggedPiece && (
         <div
-          className="w-20 h-20 pointer-events-none fixed z-50 bg-contain bg-no-repeat bg-center"
+          // Responsive dragged piece size
+          className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 pointer-events-none fixed z-50 bg-contain bg-no-repeat bg-center"
           style={{
             backgroundImage: `url(/${draggedPiece.image})`,
-            left: mousePosition.x - 40,
-            top: mousePosition.y - 40,
+            left: mousePosition.x - (squareSize / 2),
+            top: mousePosition.y - (squareSize / 2),
           }}
         ></div>
       )}
