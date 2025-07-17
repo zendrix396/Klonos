@@ -20,7 +20,8 @@ export default function Board({
   setDraggedPiece,
   setDraggedFrom,
 }: BoardProps) {
-  return (
+
+  return ( 
     <div className="relative top-8 left-8 overflow-x-hidden">
       {board.map((rowArr, row) => (
         <div key={row} className="flex flex-row">
@@ -33,6 +34,7 @@ export default function Board({
               hovered={hoveredSquare?.row === row && hoveredSquare?.col === col}
               dragging={dragging}
               draggedFrom={draggedFrom}
+              dotExists={( row>= draggedFrom?.row-2 && row<=draggedFrom?.row-1  && col===draggedFrom?.col && dragging)?true:false}
               onMouseDown={() => {
                 if (piece !== "") {
                   setMouseDown(true);

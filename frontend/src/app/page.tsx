@@ -15,6 +15,8 @@ export default function Home() {
     setDraggedPiece,
     setDraggedFrom,
   } = useChessBoard();
+  
+
 
   return (
     <>
